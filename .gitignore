@@ -169,3 +169,12 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+uv.lock
+data/scraped
+data/proxies.txt
+data/rewrite
+data/rewrite2
+data/rewrite3
+data/*.parquet
+data/elements.json
