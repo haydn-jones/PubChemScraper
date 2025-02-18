@@ -178,3 +178,4 @@ data/rewrite2
 data/rewrite3
 data/*.parquet
 data/elements.json
+data/*.json

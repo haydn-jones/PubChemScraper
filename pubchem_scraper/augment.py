@@ -63,11 +63,11 @@ def shift_markup(markup: list[SimpleMarkup], from_pos: int, shift: int) -> None:
             m.start += shift
 
 
-def augment(string: SimpleStringWithMarkup) -> SimpleStringWithMarkup:
+def augment(string: SimpleStringWithMarkup, n: int = 1) -> SimpleStringWithMarkup:
     """
-    Augment chemical compound mentions in text using various transformation strategies.
+    Augment chemical compound mentions in text using various transformation strategies n times.
 
-    Performs one of five possible transformations:
+    Performs one of five possible transformations for each augmentation:
     1. Replace compound with synonym or IUPAC name
     2. Add parenthetical synonym after compound
     3. Replace compound with alias (e.g., "compound 1a")
@@ -76,6 +76,7 @@ def augment(string: SimpleStringWithMarkup) -> SimpleStringWithMarkup:
 
     Args:
         string: SimpleStringWithMarkup containing text and compound annotations
+        n: Number of augmentations to perform (default=1)
 
     Returns:
         SimpleStringWithMarkup with augmented text and updated markup
@@ -87,67 +88,104 @@ def augment(string: SimpleStringWithMarkup) -> SimpleStringWithMarkup:
         return string
 
     result = string.model_copy(deep=True)
-    text = result.string
 
-    markup_to_change = random.choice(result.markup)
-    case = random.choice(range(1, 6))
-    print(case)
-    print(markup_to_change)
+    choices = []
+    while len(choices) < n:
+        choice = random.choice(range(1, 6))
+        if choice == 5 and 5 in choices:
+            continue
 
-    match case:
-        case 1:
-            new_text = random.choice([get_rand_synonym(markup_to_change.cid), get_iupac(markup_to_change.cid)])
-            text, shift = replace_text(text, markup_to_change.start, markup_to_change.length, new_text)
-            markup_to_change.hit = new_text
-            markup_to_change.length = len(new_text)
-            shift_markup(result.markup, markup_to_change.start, shift)
+        choices.append(choice)
 
-        case 2:
-            new_synonym = get_rand_synonym(markup_to_change.cid)
-            new_string = f"{markup_to_change.hit} ({new_synonym})"
-            text, shift = replace_text(text, markup_to_change.start, markup_to_change.length, new_string)
-            markup_to_change.hit = new_string
-            markup_to_change.length = len(new_string)
-            shift_markup(result.markup, markup_to_change.start, shift)
+    for case in choices:
+        if not result.markup:
+            break
 
-        case 3:
-            alias = random.choice([get_random_alias(), get_random_id()])
-            text, shift = replace_text(text, markup_to_change.start, markup_to_change.length, alias)
-            markup_to_change.hit = alias
-            markup_to_change.length = len(alias)
-            shift_markup(result.markup, markup_to_change.start, shift)
+        markup_to_change = random.choice(result.markup)
 
-        case 4:
-            new_name = random.choice([get_rand_synonym(markup_to_change.cid), get_iupac(markup_to_change.cid)])
-            alias = get_random_id()
-            new_text = f"{new_name} ({alias})"
+        match case:
+            case 1:
+                result, text = _aug_type_1(markup_to_change, result)
+            case 2:
+                result, text = _aug_type_2(markup_to_change, result)
+            case 3:
+                result, text = _aug_type_3(markup_to_change, result)
+            case 4:
+                result, text = _aug_type_4(markup_to_change, result)
+            case 5:
+                result, text = _aug_type_5(markup_to_change, result)
+            case _:
+                raise ValueError("Invalid case number")
 
-            text, shift = replace_text(text, markup_to_change.start, markup_to_change.length, new_text)
-            markup_to_change.hit = new_text
-            markup_to_change.length = len(new_text)
-            shift_markup(result.markup, markup_to_change.start, shift)
+        result.string = text
+        result.markup = sorted(result.markup, key=lambda x: x.start)
 
-        case 5:
-            first_markup = min(result.markup, key=lambda x: x.start)
-            if not first_markup.cid:
-                return string
-
-            new_name = get_iupac(first_markup.cid)
-            alias = get_random_id()
-            prefix = f"{new_name} ({alias}): "
-
-            new_markup = SimpleMarkup(
-                start=0,
-                length=len(prefix) - 2,
-                cid=first_markup.cid,
-                hit=f"{new_name} ({alias})",
-            )
-
-            text = prefix + text
-            shift_markup(result.markup, -1, len(prefix))
-
-            result.markup.append(new_markup)
-
-    result.string = text
-    result.markup = sorted(result.markup, key=lambda x: x.start)
     return result
+
+
+def _aug_type_1(markup_to_change: SimpleMarkup, result: SimpleStringWithMarkup) -> tuple[SimpleStringWithMarkup, str]:
+    new_text = random.choice([get_rand_synonym(markup_to_change.cid), get_iupac(markup_to_change.cid)])
+    text, shift = replace_text(result.string, markup_to_change.start, markup_to_change.length, new_text)
+    markup_to_change.hit = new_text
+    markup_to_change.length = len(new_text)
+    shift_markup(result.markup, markup_to_change.start, shift)
+
+    return result, text
+
+
+def _aug_type_2(markup_to_change: SimpleMarkup, result: SimpleStringWithMarkup) -> tuple[SimpleStringWithMarkup, str]:
+    new_synonym = get_rand_synonym(markup_to_change.cid)
+    new_string = f"{markup_to_change.hit} ({new_synonym})"
+    text, shift = replace_text(result.string, markup_to_change.start, markup_to_change.length, new_string)
+    markup_to_change.hit = new_string
+    markup_to_change.length = len(new_string)
+    shift_markup(result.markup, markup_to_change.start, shift)
+
+    return result, text
+
+
+def _aug_type_3(markup_to_change: SimpleMarkup, result: SimpleStringWithMarkup) -> tuple[SimpleStringWithMarkup, str]:
+    alias = random.choice([get_random_alias(), get_random_id()])
+    text, shift = replace_text(result.string, markup_to_change.start, markup_to_change.length, alias)
+    markup_to_change.hit = alias
+    markup_to_change.length = len(alias)
+    shift_markup(result.markup, markup_to_change.start, shift)
+
+    return result, text
+
+
+def _aug_type_4(markup_to_change: SimpleMarkup, result: SimpleStringWithMarkup) -> tuple[SimpleStringWithMarkup, str]:
+    new_name = random.choice([get_rand_synonym(markup_to_change.cid), get_iupac(markup_to_change.cid)])
+    alias = random.choice([get_random_alias(), get_random_id()])
+    new_text = f"{new_name} ({alias})"
+
+    text, shift = replace_text(result.string, markup_to_change.start, markup_to_change.length, new_text)
+    markup_to_change.hit = new_text
+    markup_to_change.length = len(new_text)
+    shift_markup(result.markup, markup_to_change.start, shift)
+
+    return result, text
+
+
+def _aug_type_5(markup_to_change: SimpleMarkup, result: SimpleStringWithMarkup) -> tuple[SimpleStringWithMarkup, str]:
+    first_markup = min(result.markup, key=lambda x: x.start)
+    if not first_markup.cid:
+        return result, result.string
+
+    new_name = get_iupac(first_markup.cid)
+    alias = random.choice([get_random_alias(), get_random_id()])
+    prefix = f"{new_name} ({alias}): "
+
+    new_markup = SimpleMarkup(
+        start=0,
+        length=len(prefix) - 2,
+        cid=first_markup.cid,
+        hit=f"{new_name} ({alias})",
+    )
+
+    text = prefix + result.string
+    shift_markup(result.markup, -1, len(prefix))
+
+    result.markup.append(new_markup)
+
+    return result, text
